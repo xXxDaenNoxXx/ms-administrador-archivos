@@ -1,63 +1,19 @@
-name: Build and Push Docker Image 
-
-on:
-  push:
-    branches:
-      - main
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Log in to DockerHub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build Docker Image
-        run: |
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/my-app:latest .
-
-      - name: Push Docker Image
-        run: |
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/my-app:latest
-
       - name: Configure SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      - name: Validate SSH Key
+      - name: Debug SSH Key
         run: |
+          ls -la ~/.ssh
+          file ~/.ssh/id_rsa
+          head -n 3 ~/.ssh/id_rsa
+          tail -n 3 ~/.ssh/id_rsa
           ssh-keygen -y -f ~/.ssh/id_rsa
 
-      - name: Add EC2 to known_hosts
+      - name: Test SSH Connection
         run: |
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Deploy to EC2
-        run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.USER_SERVER }}@${{ secrets.EC2_HOST }} << EOF
-
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login \
-            -u "${{ secrets.DOCKERHUB_USERNAME }}" \
-            --password-stdin
-
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/my-app:latest
-
-          docker stop my-app || true
-          docker rm my-app || true
-
-          docker run -d \
-            --name my-app \
-            -p 8080:8080 \
-            --restart unless-stopped \
-            ${{ secrets.DOCKERHUB_USERNAME }}/my-app:latest
-
-          EOF
+          ssh -v -i ~/.ssh/id_rsa \
+          -o StrictHostKeyChecking=no \
+          ${{ secrets.USER_SERVER }}@${{ secrets.EC2_HOST }} "hostname"
