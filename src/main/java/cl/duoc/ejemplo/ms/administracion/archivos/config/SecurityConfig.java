@@ -1,4 +1,4 @@
-package cl.duoc.azuread.ejemplo.config;
+package cl.duoc.ejemplo.ms.administracion.archivos.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
