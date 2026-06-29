@@ -7,6 +7,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 import cl.duoc.ejemplo.ms.administracion.archivos.dto.S3ObjectDto;
 import cl.duoc.ejemplo.ms.administracion.archivos.service.AwsS3Service;
 import cl.duoc.ejemplo.ms.administracion.archivos.service.EfsService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -34,7 +36,7 @@ public class AwsS3Controller {
 
 	/**
 	 * Lista todos los objetos en un bucket de S3
-	 * 
+	 *
 	 * @param bucket Nombre del bucket
 	 * @return Lista de objetos con sus metadatos
 	 */
@@ -47,7 +49,7 @@ public class AwsS3Controller {
 
 	/**
 	 * Descarga un objeto de S3 como array de bytes
-	 * 
+	 *
 	 * @param bucket Nombre del bucket
 	 * @param key    Clave del objeto a descargar
 	 * @return Archivo descargado como bytes
@@ -57,26 +59,53 @@ public class AwsS3Controller {
 
 		byte[] fileBytes = awsS3Service.downloadAsBytes(bucket, key);
 
-		return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + key + "\"")
-				.contentType(MediaType.APPLICATION_OCTET_STREAM).body(fileBytes);
+		return ResponseEntity.ok()
+				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + key + "\"")
+				.contentType(MediaType.APPLICATION_OCTET_STREAM)
+				.body(fileBytes);
 	}
 
 	/**
-	 * Sube un archivo a S3 y lo almacena en EFS
-	 * 
+	 * Sube un archivo a S3 via multipart/form-data
+	 *
 	 * @param bucket Nombre del bucket
 	 * @param key    Clave del objeto
 	 * @param file   Archivo a subir
 	 * @return Respuesta de éxito
 	 */
-	@PostMapping("/{bucket}/object")
+	@PostMapping(value = "/{bucket}/object", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public ResponseEntity<Void> uploadObject(@PathVariable String bucket, @RequestParam String key,
 			@RequestParam("file") MultipartFile file) {
 
 		try {
+			efsService.saveToEfs(key, file);
+			awsS3Service.upload(bucket, key, file);
+			return ResponseEntity.status(HttpStatus.CREATED).build();
+		} catch (Exception e) {
+			e.printStackTrace();
+			return ResponseEntity.internalServerError().build();
+		}
+	}
+
+	/**
+	 * Sube un archivo a S3 via application/octet-stream (compatible con API Gateway)
+	 *
+	 * @param bucket   Nombre del bucket
+	 * @param key      Clave del objeto
+	 * @param request  Request HTTP con los bytes del archivo
+	 * @return Respuesta de éxito
+	 */
+	@PostMapping(value = "/{bucket}/object", consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+	public ResponseEntity<Void> uploadObjectBinary(@PathVariable String bucket, @RequestParam String key,
+			HttpServletRequest request) {
+
+		try {
+			byte[] bytes = request.getInputStream().readAllBytes();
+			String filename = key.substring(key.lastIndexOf("/") + 1);
+
+			MockMultipartFile file = new MockMultipartFile("file", filename, "application/octet-stream", bytes);
 
 			efsService.saveToEfs(key, file);
-
 			awsS3Service.upload(bucket, key, file);
 
 			return ResponseEntity.status(HttpStatus.CREATED).build();
@@ -88,7 +117,7 @@ public class AwsS3Controller {
 
 	/**
 	 * Mueve un objeto dentro del mismo bucket
-	 * 
+	 *
 	 * @param bucket    Nombre del bucket
 	 * @param sourceKey Clave del objeto origen
 	 * @param destKey   Clave del objeto destino
@@ -104,7 +133,7 @@ public class AwsS3Controller {
 
 	/**
 	 * Elimina un objeto de S3
-	 * 
+	 *
 	 * @param bucket Nombre del bucket
 	 * @param key    Clave del objeto a eliminar
 	 * @return Respuesta sin contenido
