@@ -1,5 +1,5 @@
 FROM eclipse-temurin:22-jdk AS buildstage 
-
+ 
 RUN apt-get update && apt-get install -y maven
 
 WORKDIR /app
