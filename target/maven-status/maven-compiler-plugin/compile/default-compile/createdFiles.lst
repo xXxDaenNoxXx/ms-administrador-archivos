@@ -1,5 +1,0 @@
-cl\duoc\ejemplo\ms\administracion\archivos\service\AwsS3Service.class
-cl\duoc\ejemplo\ms\administracion\archivos\dto\S3ObjectDto.class
-cl\duoc\ejemplo\ms\administracion\archivos\service\EfsService.class
-cl\duoc\ejemplo\ms\administracion\archivos\MsAdministracionArchivosApplication.class
-cl\duoc\ejemplo\ms\administracion\archivos\controller\AwsS3Controller.class
