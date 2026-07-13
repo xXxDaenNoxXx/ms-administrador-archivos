@@ -1,31 +1,23 @@
 package cl.duoc.ejemplo.ms.administracion.archivos.config;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.stream.Collectors;
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
-import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * MODIFICADO
+ * MODIFICADO (TEMPORAL)
  *
- * Se agrega autorizacion basada en 2 roles, tal como pide el caso:
- * - ROLE_DESCARGAR_GUIAS: solo puede usar el endpoint de descarga (GET /s3/{bucket}/object)
- * - ROLE_GESTION_GUIAS: puede usar el resto de los endpoints (subir, mover, eliminar, listar)
+ * Se desactiva la restriccion por rol (hasRole(...)) mientras se termina de
+ * configurar Azure AD B2C App Roles. Se mantiene la exigencia de JWT valido
+ * (authenticated()), o sea que sigue siendo necesario un token de Azure AD,
+ * solo que ya no importa si trae o no el claim "roles".
  *
- * Azure AD B2C debe entregar estos roles en el claim "roles" del token (App Roles).
+ * IMPORTANTE: revertir a la version con hasRole("DESCARGAR_GUIAS") /
+ * hasRole("GESTION_GUIAS") antes de la entrega/demo, porque el caso pide
+ * explicitamente probar la restriccion de roles (ver README, seccion 4).
  */
 @Configuration
 @EnableWebSecurity
@@ -33,29 +25,13 @@ public class SecurityConfig {
 
 	@Bean
 	SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-
 		http.cors(Customizer.withDefaults())
 				.authorizeHttpRequests(authorize -> authorize
-						// Descargar guias: solo el rol especifico de descarga
-						.requestMatchers(HttpMethod.GET, "/s3/*/object").hasRole("DESCARGAR_GUIAS")
-						// Resto de endpoints de guias: el rol de gestion
-						.requestMatchers("/s3/**").hasRole("GESTION_GUIAS")
+						// TEMPORAL: antes tenia hasRole("DESCARGAR_GUIAS") y hasRole("GESTION_GUIAS")
+						// en /s3/*/object y /s3/** respectivamente. Se deja solo authenticated()
+						// para destrabar pruebas mientras se configuran los App Roles en Azure.
 						.anyRequest().authenticated())
-				.oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+				.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
 		return http.build();
-	}
-
-	/**
-	 * Convierte el claim "roles" del JWT de Azure AD B2C en GrantedAuthority
-	 * con el prefijo ROLE_, que es lo que esperan hasRole(...) de arriba.
-	 */
-	private org.springframework.core.convert.converter.Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter() {
-
-		return jwt -> {
-			Collection<String> roles = jwt.getClaimAsStringList("roles");
-			List<GrantedAuthority> authorities = (roles == null ? List.<String>of() : roles).stream()
-					.map(role -> new SimpleGrantedAuthority("ROLE_" + role)).collect(Collectors.toList());
-			return new JwtAuthenticationToken(jwt, authorities);
-		};
 	}
 }
