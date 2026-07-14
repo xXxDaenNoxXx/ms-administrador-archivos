@@ -1,11 +1,9 @@
 package cl.duoc.ejemplo.ms.administracion.archivos.service;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
 import cl.duoc.ejemplo.ms.administracion.archivos.dto.S3ObjectDto;
 import cl.duoc.ejemplo.ms.administracion.archivos.exception.InvalidFileException;
@@ -108,37 +106,41 @@ public class AwsS3Service {
 
 	/**
 	 * Sube un archivo a S3
-	 * 
-	 * @param bucket Nombre del bucket
-	 * @param key    Clave del objeto
-	 * @param file   Archivo a subir
+	 *
+	 * MODIFICADO: recibe los bytes ya leidos (una sola vez, en el controller)
+	 * en vez del MultipartFile original. Antes se llamaba a file.getInputStream()
+	 * aqui, pero si EfsService ya habia consumido/movido el archivo temporal
+	 * del multipart (via transferTo), esta segunda lectura fallaba con
+	 * NoSuchFileException. Con bytes en memoria no hay una "segunda lectura"
+	 * de ningun stream, asi que el orden de las operaciones ya no importa.
+	 *
+	 * @param bucket      Nombre del bucket
+	 * @param key         Clave del objeto
+	 * @param content     Contenido del archivo ya leido en memoria
+	 * @param contentType Content-Type original del archivo (puede ser null)
 	 * @throws InvalidFileException      si el archivo es inválido
 	 * @throws S3BucketNotFoundException si el bucket no existe
 	 * @throws S3AccessDeniedException   si no hay permisos para subir
-	 * @throws S3UploadException         si hay error al subir el archivo
+	 * @throws S3UploadException        si hay error al subir el archivo
 	 */
-	public void upload(String bucket, String key, MultipartFile file) {
+	public void upload(String bucket, String key, byte[] content, String contentType) {
 
 		// Validaciones del archivo
-		if (file == null || file.isEmpty()) {
+		if (content == null || content.length == 0) {
 			throw new InvalidFileException("El archivo está vacío o es nulo");
 		}
 
-		if (file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
+		if (key == null || key.isBlank()) {
 			throw new InvalidFileException("El nombre del archivo no es válido");
 		}
 
-		if (file.getSize() == 0) {
-			throw new InvalidFileException("El archivo no puede tener tamaño 0");
-		}
-
 		try {
-			log.info("Subiendo archivo: {} al bucket: {}, tamaño: {} bytes", key, bucket, file.getSize());
+			log.info("Subiendo archivo: {} al bucket: {}, tamaño: {} bytes", key, bucket, content.length);
 
 			PutObjectRequest putObjectRequest = PutObjectRequest.builder().bucket(bucket).key(key)
-					.contentType(file.getContentType()).contentLength(file.getSize()).build();
+					.contentType(contentType).contentLength((long) content.length).build();
 
-			s3Client.putObject(putObjectRequest, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+			s3Client.putObject(putObjectRequest, RequestBody.fromBytes(content));
 
 			log.info("Archivo subido exitosamente: {}", key);
 
@@ -149,8 +151,6 @@ public class AwsS3Service {
 				throw new S3AccessDeniedException("subir archivo al bucket: " + bucket, e);
 			}
 			throw new S3UploadException("Error al subir el archivo a S3: " + e.getMessage(), e);
-		} catch (IOException e) {
-			throw new S3UploadException("Error al leer el archivo: " + e.getMessage(), e);
 		}
 	}
 
