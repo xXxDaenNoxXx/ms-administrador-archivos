@@ -1,6 +1,9 @@
 package cl.duoc.ejemplo.ms.administracion.archivos.controller;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -69,31 +73,27 @@ public class AwsS3Controller {
 	 */
 	@PostMapping(value = "/{bucket}/object", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public ResponseEntity<Void> uploadObject(@PathVariable String bucket, @RequestParam String key,
-			@RequestParam("file") MultipartFile file) throws IOException {
+			@RequestParam("file") MultipartFile file,
+			@RequestHeader(value = "Authorization", required = false) String authorization) {
 
 		// MODIFICADO: se arma el mensaje de la guia antes de intentar la subida,
 		// para poder notificar tanto el exito como el error hacia msrabbitmq.
 		GuiaMensajeDTO guia = new GuiaMensajeDTO(UUID.randomUUID().toString(), "N/D", LocalDate.now(), bucket, key,
 				file.getSize(), null);
 		try {
-			// MODIFICADO: se leen los bytes UNA sola vez aqui. Antes se pasaba el
-			// MultipartFile completo a efsService.saveToEfs (que usaba transferTo,
-			// moviendo el archivo temporal de Tomcat) y despues a awsS3Service.upload
-			// (que intentaba leer el mismo stream de nuevo) -> NoSuchFileException.
-			byte[] fileBytes = file.getBytes();
+			efsService.saveToEfs(key, file);
+			awsS3Service.upload(bucket, key, file);
 
-			efsService.saveToEfs(key, fileBytes);
-			awsS3Service.upload(bucket, key, fileBytes, file.getContentType());
-
-			// AGREGADO: guia subida correctamente -> se envia a cola1
-			guiaQueueClientService.notificarGuiaGenerada(guia);
+			// MODIFICADO: se reenvia el mismo token del usuario, ya que msrabbitmq
+			// ahora exige JWT + rol GESTION_GUIAS en /api/guias
+			guiaQueueClientService.notificarGuiaGenerada(guia, authorization);
 
 			return ResponseEntity.status(HttpStatus.CREATED).build();
 		} catch (Exception e) {
 			e.printStackTrace();
 
 			// AGREGADO: fallo la subida de la guia -> se envia directo a cola2 (errores)
-			guiaQueueClientService.notificarError(guia);
+			guiaQueueClientService.notificarError(guia, authorization);
 
 			return ResponseEntity.internalServerError().build();
 		}
@@ -107,25 +107,42 @@ public class AwsS3Controller {
 			HttpServletRequest request) {
 		try {
 			byte[] bytes = request.getInputStream().readAllBytes();
+			String filename = key.substring(key.lastIndexOf("/") + 1);
 
-			// MODIFICADO: ya no se envuelve en un MultipartFile de relleno; se
-			// trabaja directo con los bytes (mismo motivo que en uploadObject).
-			efsService.saveToEfs(key, bytes);
-			awsS3Service.upload(bucket, key, bytes, "application/octet-stream");
+			MultipartFile file = new MultipartFile() {
+				@Override public String getName() { return "file"; }
+				@Override public String getOriginalFilename() { return filename; }
+				@Override public String getContentType() { return "application/octet-stream"; }
+				@Override public boolean isEmpty() { return bytes.length == 0; }
+				@Override public long getSize() { return bytes.length; }
+				@Override public byte[] getBytes() { return bytes; }
+				@Override public InputStream getInputStream() { return new ByteArrayInputStream(bytes); }
+				@Override public void transferTo(File dest) throws IOException {
+					try (var out = new java.io.FileOutputStream(dest)) {
+						out.write(bytes);
+					}
+				}
+			};
 
-			// AGREGADO: guia subida correctamente -> se envia a cola1
+			efsService.saveToEfs(key, file);
+			awsS3Service.upload(bucket, key, file);
+
+			// MODIFICADO: se reenvia el mismo token del usuario (msrabbitmq exige
+			// JWT + rol GESTION_GUIAS en /api/guias)
+			String authorization = request.getHeader("Authorization");
 			GuiaMensajeDTO guia = new GuiaMensajeDTO(UUID.randomUUID().toString(), "N/D", LocalDate.now(), bucket,
-					key, (long) bytes.length, null);
-			guiaQueueClientService.notificarGuiaGenerada(guia);
+					key, file.getSize(), null);
+			guiaQueueClientService.notificarGuiaGenerada(guia, authorization);
 
 			return ResponseEntity.status(HttpStatus.CREATED).build();
 		} catch (Exception e) {
 			e.printStackTrace();
 
 			// AGREGADO: fallo la subida de la guia -> se envia directo a cola2 (errores)
+			String authorization = request.getHeader("Authorization");
 			GuiaMensajeDTO guiaError = new GuiaMensajeDTO(UUID.randomUUID().toString(), "N/D", LocalDate.now(),
 					bucket, key, null, null);
-			guiaQueueClientService.notificarError(guiaError);
+			guiaQueueClientService.notificarError(guiaError, authorization);
 
 			return ResponseEntity.internalServerError().build();
 		}
