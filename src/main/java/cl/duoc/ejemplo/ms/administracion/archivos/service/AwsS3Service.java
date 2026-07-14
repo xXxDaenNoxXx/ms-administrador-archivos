@@ -35,14 +35,6 @@ public class AwsS3Service {
 
 	private final S3Client s3Client;
 
-	/**
-	 * Lista todos los objetos en un bucket de S3
-	 * 
-	 * @param bucket Nombre del bucket
-	 * @return Lista de objetos en el bucket
-	 * @throws S3BucketNotFoundException si el bucket no existe
-	 * @throws S3AccessDeniedException   si no hay permisos para listar objetos
-	 */
 	public List<S3ObjectDto> listObjects(String bucket) {
 
 		try {
@@ -69,16 +61,6 @@ public class AwsS3Service {
 		}
 	}
 
-	/**
-	 * Descarga un objeto de S3 como array de bytes
-	 * 
-	 * @param bucket Nombre del bucket
-	 * @param key    Clave del objeto
-	 * @return Array de bytes del objeto
-	 * @throws S3BucketNotFoundException si el bucket no existe
-	 * @throws S3ObjectNotFoundException si el objeto no existe
-	 * @throws S3AccessDeniedException   si no hay permisos para descargar
-	 */
 	public byte[] downloadAsBytes(String bucket, String key) {
 
 		try {
@@ -105,27 +87,15 @@ public class AwsS3Service {
 	}
 
 	/**
-	 * Sube un archivo a S3
-	 *
 	 * MODIFICADO: recibe los bytes ya leidos (una sola vez, en el controller)
 	 * en vez del MultipartFile original. Antes se llamaba a file.getInputStream()
 	 * aqui, pero si EfsService ya habia consumido/movido el archivo temporal
 	 * del multipart (via transferTo), esta segunda lectura fallaba con
 	 * NoSuchFileException. Con bytes en memoria no hay una "segunda lectura"
 	 * de ningun stream, asi que el orden de las operaciones ya no importa.
-	 *
-	 * @param bucket      Nombre del bucket
-	 * @param key         Clave del objeto
-	 * @param content     Contenido del archivo ya leido en memoria
-	 * @param contentType Content-Type original del archivo (puede ser null)
-	 * @throws InvalidFileException      si el archivo es inválido
-	 * @throws S3BucketNotFoundException si el bucket no existe
-	 * @throws S3AccessDeniedException   si no hay permisos para subir
-	 * @throws S3UploadException        si hay error al subir el archivo
 	 */
 	public void upload(String bucket, String key, byte[] content, String contentType) {
 
-		// Validaciones del archivo
 		if (content == null || content.length == 0) {
 			throw new InvalidFileException("El archivo está vacío o es nulo");
 		}
@@ -154,16 +124,6 @@ public class AwsS3Service {
 		}
 	}
 
-	/**
-	 * Mueve un objeto dentro del mismo bucket (copiar + borrar)
-	 * 
-	 * @param bucket    Nombre del bucket
-	 * @param sourceKey Clave del objeto origen
-	 * @param destKey   Clave del objeto destino
-	 * @throws S3BucketNotFoundException si el bucket no existe
-	 * @throws S3ObjectNotFoundException si el objeto origen no existe
-	 * @throws S3AccessDeniedException   si no hay permisos
-	 */
 	public void moveObject(String bucket, String sourceKey, String destKey) {
 
 		try {
@@ -192,14 +152,6 @@ public class AwsS3Service {
 		}
 	}
 
-	/**
-	 * Elimina un objeto de S3
-	 * 
-	 * @param bucket Nombre del bucket
-	 * @param key    Clave del objeto
-	 * @throws S3BucketNotFoundException si el bucket no existe
-	 * @throws S3AccessDeniedException   si no hay permisos para eliminar
-	 */
 	public void deleteObject(String bucket, String key) {
 
 		try {
