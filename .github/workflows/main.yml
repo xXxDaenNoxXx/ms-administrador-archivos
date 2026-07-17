@@ -9,45 +9,47 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+
       - name: Log in to DockerHub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Build Docker Image
         run: |
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/ms-administrador-archivos:latest .
+
       - name: Push Docker Image
         run: |
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/ms-administrador-archivos:latest
+
       - name: Configure SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
       - name: Validate SSH Key
         run: |
           ssh-keygen -y -f ~/.ssh/id_rsa
+
       - name: Add EC2 to known_hosts
         run: |
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
       - name: Deploy to EC2
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.USER_SERVER }}@${{ secrets.EC2_HOST }} << EOF
+        
+          ssh -i ~/.ssh/id_rsa ${{ secrets.USER_SERVER }}@${{ secrets.EC2_HOST }} << 'EOF'
+
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login \
             -u "${{ secrets.DOCKERHUB_USERNAME }}" \
             --password-stdin
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ms-administrador-archivos:latest
-          docker stop ms-administrador-archivos || true
-          docker rm ms-administrador-archivos || true
-          docker run -d \
-            --name ms-administrador-archivos \
-            -p 8080:8080 \
-            --restart unless-stopped \
-            -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
-            -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
-            -e AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }} \
-            -e AWS_REGION=${{ secrets.AWS_REGION }} \
-            -v /home/ec2-user/efs:/app/efs \
-            ${{ secrets.DOCKERHUB_USERNAME }}/ms-administrador-archivos:latest
+
+        
+          cd ~
+
+          docker compose pull ms-administracion-archivos
+          docker compose up -d ms-administracion-archivos
           EOF
