@@ -76,23 +76,20 @@ public class AwsS3Controller {
 		GuiaMensajeDTO guia = new GuiaMensajeDTO(UUID.randomUUID().toString(), "N/D", LocalDate.now(), bucket, key,
 				file.getSize(), null);
 		try {
-			// MODIFICADO: se leen los bytes UNA sola vez aqui. Antes se pasaba el
-			// MultipartFile completo a efsService.saveToEfs (que usaba transferTo,
-			// moviendo el archivo temporal de Tomcat) y despues a awsS3Service.upload
-			// (que intentaba leer el mismo stream de nuevo) -> NoSuchFileException.
+
 			byte[] fileBytes = file.getBytes();
 
 			efsService.saveToEfs(key, fileBytes);
 			awsS3Service.upload(bucket, key, fileBytes, file.getContentType());
 
-			// AGREGADO: guia subida correctamente -> se envia a cola1
+			// se envia a cola1
 			guiaQueueClientService.notificarGuiaGenerada(guia);
 
 			return ResponseEntity.status(HttpStatus.CREATED).build();
 		} catch (Exception e) {
 			e.printStackTrace();
 
-			// AGREGADO: fallo la subida de la guia -> se envia directo a cola2 (errores)
+			// se envia directo a cola2 (errores)
 			guiaQueueClientService.notificarError(guia);
 
 			return ResponseEntity.internalServerError().build();
@@ -108,12 +105,10 @@ public class AwsS3Controller {
 		try {
 			byte[] bytes = request.getInputStream().readAllBytes();
 
-			// MODIFICADO: ya no se envuelve en un MultipartFile de relleno; se
-			// trabaja directo con los bytes (mismo motivo que en uploadObject).
 			efsService.saveToEfs(key, bytes);
 			awsS3Service.upload(bucket, key, bytes, "application/octet-stream");
 
-			// AGREGADO: guia subida correctamente -> se envia a cola1
+			//se envia a cola1
 			GuiaMensajeDTO guia = new GuiaMensajeDTO(UUID.randomUUID().toString(), "N/D", LocalDate.now(), bucket,
 					key, (long) bytes.length, null);
 			guiaQueueClientService.notificarGuiaGenerada(guia);
@@ -122,7 +117,7 @@ public class AwsS3Controller {
 		} catch (Exception e) {
 			e.printStackTrace();
 
-			// AGREGADO: fallo la subida de la guia -> se envia directo a cola2 (errores)
+			// se envia directo a cola2 (errores)
 			GuiaMensajeDTO guiaError = new GuiaMensajeDTO(UUID.randomUUID().toString(), "N/D", LocalDate.now(),
 					bucket, key, null, null);
 			guiaQueueClientService.notificarError(guiaError);
