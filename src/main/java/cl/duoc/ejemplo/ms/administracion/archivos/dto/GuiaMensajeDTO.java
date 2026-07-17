@@ -6,15 +6,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * AGREGADO
- *
- * Payload que se envia por HTTP hacia msrabbitmq (POST /api/guias o
- * /api/guias/error) cada vez que se sube/genera una guia de despacho.
- * Sus campos deben coincidir con los de GuiaDespachoDTO en msrabbitmq,
- * ya que ambos microservicios son independientes y solo comparten el
- * contrato JSON, no código.
- */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
